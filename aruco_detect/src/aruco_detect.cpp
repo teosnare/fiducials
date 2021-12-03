@@ -42,6 +42,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
@@ -77,6 +78,7 @@ class FiducialsNode {
   private:
     ros::Publisher vertices_pub;
     ros::Publisher pose_pub;
+    ros::Publisher marker_pub;
 
     ros::Subscriber caminfo_sub;
     ros::Subscriber vertices_sub;
@@ -400,6 +402,8 @@ void FiducialsNode::poseEstimateCallback(const FiducialArrayConstPtr & msg)
 
     vision_msgs::Detection2DArray vma;
     fiducial_msgs::FiducialTransformArray fta;
+    visualization_msgs::MarkerArray mrks;
+
     if (vis_msgs) {
         vma.header.stamp = msg->header.stamp;
         vma.header.frame_id = frameId;
@@ -459,6 +463,7 @@ void FiducialsNode::poseEstimateCallback(const FiducialArrayConstPtr & msg)
                 // Standard ROS vision_msgs
                 fiducial_msgs::FiducialTransform ft;
                 tf2::Quaternion q;
+                q.setRotation(tf2::Vector3(axis[0], axis[1], axis[2]), angle);
                 if (vis_msgs) {
                     vision_msgs::Detection2D vm;
                     vision_msgs::ObjectHypothesisWithPose vmh;
@@ -467,7 +472,6 @@ void FiducialsNode::poseEstimateCallback(const FiducialArrayConstPtr & msg)
                     vmh.pose.pose.position.x = tvecs[i][0];
                     vmh.pose.pose.position.y = tvecs[i][1];
                     vmh.pose.pose.position.z = tvecs[i][2];
-                    q.setRotation(tf2::Vector3(axis[0], axis[1], axis[2]), angle);
                     vmh.pose.pose.orientation.w = q.w();
                     vmh.pose.pose.orientation.x = q.x();
                     vmh.pose.pose.orientation.y = q.y();
@@ -482,7 +486,6 @@ void FiducialsNode::poseEstimateCallback(const FiducialArrayConstPtr & msg)
                     ft.transform.translation.x = tvecs[i][0];
                     ft.transform.translation.y = tvecs[i][1];
                     ft.transform.translation.z = tvecs[i][2];
-                    q.setRotation(tf2::Vector3(axis[0], axis[1], axis[2]), angle);
                     ft.transform.rotation.w = q.w();
                     ft.transform.rotation.x = q.x();
                     ft.transform.rotation.y = q.y();
@@ -522,6 +525,31 @@ void FiducialsNode::poseEstimateCallback(const FiducialArrayConstPtr & msg)
                         broadcaster.sendTransform(ts);
                     }
                 }
+
+                visualization_msgs::Marker visMarker;
+                visMarker.header.stamp = msg->header.stamp;
+                visMarker.header.frame_id = frameId;
+                visMarker.header.seq = msg->header.seq;
+                visMarker.id = ft.fiducial_id;
+                visMarker.type = visualization_msgs::Marker::CUBE;
+                visMarker.action = visualization_msgs::Marker::ADD;
+                visMarker.pose.position.x = tvecs[i][0];
+                visMarker.pose.position.y = tvecs[i][1];
+                visMarker.pose.position.z = tvecs[i][2];
+                visMarker.pose.orientation.w = q.w();
+                visMarker.pose.orientation.x = q.x();
+                visMarker.pose.orientation.y = q.y();
+                visMarker.pose.orientation.z = q.z();
+                visMarker.scale.x = fiducial_len;
+                visMarker.scale.y = fiducial_len;
+                visMarker.scale.z = 0.001;
+                visMarker.color.r = 1.0;
+                visMarker.color.g = 0;
+                visMarker.color.b = 0;
+                visMarker.color.a = 1.0;
+                visMarker.lifetime = ros::Duration(3.0);
+                mrks.markers.push_back(visMarker);
+
             }
         }
         catch(cv_bridge::Exception & e) {
@@ -535,6 +563,8 @@ void FiducialsNode::poseEstimateCallback(const FiducialArrayConstPtr & msg)
         pose_pub.publish(vma);
     else 
         pose_pub.publish(fta);
+
+    marker_pub.publish(mrks);
 }
 
 void FiducialsNode::handleIgnoreString(const std::string& str)
@@ -667,6 +697,7 @@ FiducialsNode::FiducialsNode() : nh(), pnh("~"), it(nh)
         pose_pub = nh.advertise<vision_msgs::Detection2DArray>("fiducial_transforms", 1);
     else        
         pose_pub = nh.advertise<fiducial_msgs::FiducialTransformArray>("fiducial_transforms", 1);
+    marker_pub = nh.advertise<visualization_msgs::MarkerArray>("markers", 1);
 
     dictionary = aruco::getPredefinedDictionary(dicno);
 
